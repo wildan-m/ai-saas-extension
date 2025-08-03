@@ -75,13 +75,7 @@ export default function Popup() {
     }));
 
     try {
-      // Inject content script if needed
-      await chrome.scripting.executeScript({
-        target: { tabId: currentTab.id },
-        files: ['content.js']
-      });
-
-      // Extract content data
+      // Extract content data (content script is auto-injected by Plasmo)
       const response = await chrome.tabs.sendMessage(currentTab.id, {
         type: 'EXTRACT_CONTENT'
       });
