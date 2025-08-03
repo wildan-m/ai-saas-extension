@@ -1,26 +1,31 @@
-import type { ExtractedData, FormData, FormField, PageMetadata, ChromeMessage } from "~/types"
-import { MessageHandler } from "~/lib/messaging"
+import type { ExtractedData, FormData, FormField, PageMetadata } from "~/types"
 
 class SaasContentExtractor {
   private mutationObserver: MutationObserver;
   private debounceTimer: number | null = null;
 
   constructor() {
+    console.log('[Content] SaasContentExtractor initialized');
     this.setupMessageListener();
     this.setupMutationObserver();
     this.detectPlatform();
   }
 
   setupMessageListener(): void {
-    MessageHandler.setupListener((message: ChromeMessage, _sender, sendResponse) => {
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      console.log('[Content] Received message:', message);
+      
       if (message.type === 'EXTRACT_CONTENT') {
         this.extractPageData()
-          .then(data => sendResponse({ success: true, data }))
+          .then(data => {
+            console.log('[Content] Extracted data:', data);
+            sendResponse({ success: true, data });
+          })
           .catch(error => {
             console.error('[Content] Extraction failed:', error);
             sendResponse({ success: false, error: error.message });
           });
-        return true;
+        return true; // Keep message channel open for async response
       }
       return false;
     });
@@ -54,7 +59,7 @@ class SaasContentExtractor {
     );
 
     if (hasSignificantChanges) {
-      MessageHandler.sendToBackground({
+      chrome.runtime.sendMessage({
         type: 'CONTENT_CHANGED',
         url: window.location.href
       }).catch(error => {

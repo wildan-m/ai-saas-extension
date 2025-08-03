@@ -19,15 +19,20 @@ class AIService {
   }
 
   setupMessageHandlers(): void {
-    MessageHandler.setupListener((message: ChromeMessage, _sender, sendResponse) => {
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      console.log('[Background] Received message:', message);
+      
       if (message.type === 'ANALYZE_CONTENT') {
         this.handleContentAnalysis(message.data)
-          .then(analysis => sendResponse({ success: true, analysis }))
+          .then(analysis => {
+            console.log('[Background] Analysis completed:', analysis);
+            sendResponse({ success: true, analysis });
+          })
           .catch(error => {
             console.error('[Background] Analysis failed:', error);
             sendResponse({ success: false, error: error.message });
           });
-        return true;
+        return true; // Keep message channel open for async response
       }
       
       if (message.type === 'CONTENT_CHANGED') {

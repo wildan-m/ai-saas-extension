@@ -62,16 +62,30 @@ export default function Popup() {
     }));
 
     try {
+      console.log('[Popup] Sending message to content script, tab ID:', currentTab.id);
+      
       // Extract content data (content script is auto-injected by Plasmo)
-      const response = await MessageHandler.sendToContent(currentTab.id, {
+      const response = await chrome.tabs.sendMessage(currentTab.id, {
         type: 'EXTRACT_CONTENT'
       });
 
+      console.log('[Popup] Content response:', response);
+
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to extract content');
+      }
+
       // Send to background for analysis
-      const analysisResponse = await MessageHandler.sendToBackground({
+      const analysisResponse = await chrome.runtime.sendMessage({
         type: 'ANALYZE_CONTENT',
         data: response.data
       });
+
+      console.log('[Popup] Analysis response:', analysisResponse);
+
+      if (!analysisResponse.success) {
+        throw new Error(analysisResponse.error || 'Failed to analyze content');
+      }
 
       const analysis = analysisResponse.analysis;
       
