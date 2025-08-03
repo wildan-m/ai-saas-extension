@@ -1,20 +1,7 @@
 import { useState, useEffect } from 'react';
-
-interface ContentAnalysis {
-  summary: string;
-  sentiment: 'positive' | 'negative' | 'neutral';
-  keyInsights: string[];
-  confidence: number;
-  actionableItems: string[];
-  categories: string[];
-}
-
-interface AnalysisState {
-  analysis: ContentAnalysis | null;
-  loading: boolean;
-  error: string | null;
-  lastAnalyzed: string | null;
-}
+import type { ContentAnalysis, AnalysisState } from "~/types";
+import { MessageHandler } from "~/lib/messaging";
+import { ExtensionStorage } from "~/lib/storage";
 
 export default function Popup() {
   const [state, setState] = useState<AnalysisState>({
@@ -45,19 +32,19 @@ export default function Popup() {
 
   const loadCachedAnalysis = async () => {
     try {
-      const result = await chrome.storage.local.get(['lastAnalysis', 'lastAnalyzedUrl']);
-      if (result.lastAnalysis && result.lastAnalyzedUrl) {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (tab?.url === result.lastAnalyzedUrl) {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.url) {
+        const analysis = await ExtensionStorage.getAnalysis(tab.url);
+        if (analysis) {
           setState(prev => ({
             ...prev,
-            analysis: result.lastAnalysis,
-            lastAnalyzed: result.lastAnalyzedUrl
+            analysis,
+            lastAnalyzed: tab.url
           }));
         }
       }
     } catch (error) {
-      console.error('Failed to load cached analysis:', error);
+      console.error('[Popup] Failed to load cached analysis:', error);
     }
   };
 
@@ -76,31 +63,22 @@ export default function Popup() {
 
     try {
       // Extract content data (content script is auto-injected by Plasmo)
-      const response = await chrome.tabs.sendMessage(currentTab.id, {
+      const response = await MessageHandler.sendToContent(currentTab.id, {
         type: 'EXTRACT_CONTENT'
       });
 
-      if (!response.success) {
-        throw new Error(response.error || 'Failed to extract content');
-      }
-
       // Send to background for analysis
-      const analysisResponse = await chrome.runtime.sendMessage({
+      const analysisResponse = await MessageHandler.sendToBackground({
         type: 'ANALYZE_CONTENT',
         data: response.data
       });
 
-      if (!analysisResponse.success) {
-        throw new Error(analysisResponse.error || 'Failed to analyze content');
-      }
-
       const analysis = analysisResponse.analysis;
       
-      // Cache the result
-      await chrome.storage.local.set({
-        lastAnalysis: analysis,
-        lastAnalyzedUrl: currentTab.url
-      });
+      // Cache the result using Plasmo storage
+      if (currentTab.url) {
+        await ExtensionStorage.setAnalysis(currentTab.url, analysis);
+      }
 
       setState(prev => ({
         ...prev,
@@ -116,14 +94,17 @@ export default function Popup() {
     }
   };
 
-  const clearAnalysis = () => {
+  const clearAnalysis = async () => {
     setState(prev => ({
       ...prev,
       analysis: null,
       error: null,
       lastAnalyzed: null
     }));
-    chrome.storage.local.remove(['lastAnalysis', 'lastAnalyzedUrl']);
+    
+    if (currentTab?.url) {
+      await ExtensionStorage.clearAnalysis(currentTab.url);
+    }
   };
 
   const getSentimentColor = (sentiment: string) => {

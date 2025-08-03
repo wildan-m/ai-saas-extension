@@ -1,31 +1,5 @@
-interface ExtractedData {
-  title: string;
-  url: string;
-  mainContent: string;
-  forms: FormData[];
-  metadata: PageMetadata;
-  timestamp: number;
-}
-
-interface FormData {
-  id: string;
-  action: string;
-  fields: FormField[];
-}
-
-interface FormField {
-  name: string;
-  type: string;
-  value: string;
-  label: string;
-}
-
-interface PageMetadata {
-  platform: string;
-  contentType: string;
-  wordCount: number;
-  hasInteractiveElements: boolean;
-}
+import type { ExtractedData, FormData, FormField, PageMetadata, ChromeMessage } from "~/types"
+import { MessageHandler } from "~/lib/messaging"
 
 class SaasContentExtractor {
   private mutationObserver: MutationObserver;
@@ -38,13 +12,17 @@ class SaasContentExtractor {
   }
 
   setupMessageListener(): void {
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    MessageHandler.setupListener((message: ChromeMessage, _sender, sendResponse) => {
       if (message.type === 'EXTRACT_CONTENT') {
         this.extractPageData()
           .then(data => sendResponse({ success: true, data }))
-          .catch(error => sendResponse({ success: false, error: error.message }));
+          .catch(error => {
+            console.error('[Content] Extraction failed:', error);
+            sendResponse({ success: false, error: error.message });
+          });
         return true;
       }
+      return false;
     });
   }
 
@@ -76,9 +54,11 @@ class SaasContentExtractor {
     );
 
     if (hasSignificantChanges) {
-      chrome.runtime.sendMessage({
+      MessageHandler.sendToBackground({
         type: 'CONTENT_CHANGED',
         url: window.location.href
+      }).catch(error => {
+        console.error('[Content] Failed to notify background of content change:', error);
       });
     }
   }

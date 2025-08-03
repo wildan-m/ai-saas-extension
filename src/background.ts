@@ -1,16 +1,5 @@
-interface ContentAnalysis {
-  summary: string;
-  sentiment: 'positive' | 'negative' | 'neutral';
-  keyInsights: string[];
-  confidence: number;
-  actionableItems: string[];
-  categories: string[];
-}
-
-interface RateLimitEntry {
-  timestamp: number;
-  count: number;
-}
+import type { ContentAnalysis, RateLimitEntry, ChromeMessage } from "~/types"
+import { MessageHandler } from "~/lib/messaging"
 
 class AIService {
   private rateLimiter = new Map<string, RateLimitEntry>();
@@ -21,28 +10,43 @@ class AIService {
   constructor() {
     this.setupMessageHandlers();
     this.setupKeepAlive();
+    this.initializeExtension();
+  }
+
+  private initializeExtension(): void {
+    // Plasmo-specific initialization
+    console.log('[Background] AI Service initialized');
   }
 
   setupMessageHandlers(): void {
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    MessageHandler.setupListener((message: ChromeMessage, _sender, sendResponse) => {
       if (message.type === 'ANALYZE_CONTENT') {
         this.handleContentAnalysis(message.data)
           .then(analysis => sendResponse({ success: true, analysis }))
-          .catch(error => sendResponse({ success: false, error: error.message }));
+          .catch(error => {
+            console.error('[Background] Analysis failed:', error);
+            sendResponse({ success: false, error: error.message });
+          });
         return true;
       }
       
       if (message.type === 'CONTENT_CHANGED') {
-        this.handleContentChange(message.url);
+        this.handleContentChange(message.url || '');
+        sendResponse({ success: true });
+        return false;
       }
+      
+      return false;
     });
   }
 
   setupKeepAlive(): void {
+    // Plasmo handles service worker lifecycle automatically
+    // This is mainly for logging/debugging purposes
     chrome.runtime.onConnect.addListener(port => {
       if (port.name === 'keepAlive') {
         port.onDisconnect.addListener(() => {
-          console.log('Port disconnected, service worker may terminate');
+          console.log('[Background] Port disconnected, service worker may terminate');
         });
       }
     });
@@ -245,7 +249,18 @@ class AIService {
 // Initialize the service
 const aiService = new AIService();
 
-// Handle extension installation
-chrome.runtime.onInstalled.addListener(() => {
-  console.log('AI SAAS Extension installed successfully');
+// Plasmo-specific extension lifecycle handlers
+chrome.runtime.onInstalled.addListener((details) => {
+  console.log('[Background] AI SAAS Extension installed:', details.reason);
+  
+  if (details.reason === 'install') {
+    // First time installation
+    console.log('[Background] First time installation');
+  } else if (details.reason === 'update') {
+    // Extension update
+    console.log('[Background] Extension updated from:', details.previousVersion);
+  }
 });
+
+// Export for Plasmo (optional but recommended for debugging)
+export default aiService;
