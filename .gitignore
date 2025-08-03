@@ -66,4 +66,7 @@ jspm_packages/
 *.tgz
 
 # Yarn Integrity file
-.yarn-integrity
+.yarn-integrity.env
+.env.local
+.env.development
+.env.production

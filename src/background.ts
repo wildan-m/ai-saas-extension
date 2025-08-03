@@ -117,7 +117,27 @@ class AIService {
   }
 
   private async simulateAIAnalysis(data: any): Promise<ContentAnalysis> {
-    // Simulate network delay
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    const openaiKey = process.env.OPENAI_API_KEY;
+    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+    const backendUrl = process.env.PLASMO_PUBLIC_BACKEND_URL;
+
+    // Production Mode: Use secure backend
+    if (!isDevelopment && backendUrl) {
+      return this.callSecureBackend(data, backendUrl);
+    }
+
+    // Development Mode: Direct API calls (for testing)
+    if (isDevelopment && openaiKey && openaiKey !== 'sk-your-openai-api-key-here') {
+      return this.callOpenAIDirect(data, openaiKey);
+    }
+
+    if (isDevelopment && anthropicKey && anthropicKey !== 'your-anthropic-api-key-here') {
+      return this.callAnthropicDirect(data, anthropicKey);
+    }
+
+    // Fallback: Simulated analysis
+    console.log('[Background] Using simulated AI analysis');
     await new Promise(resolve => setTimeout(resolve, 1500));
     
     const content = data.mainContent.toLowerCase();
@@ -248,6 +268,115 @@ class AIService {
   private handleContentChange(url: string): void {
     console.log(`Content changed on: ${url}`);
     // In a real implementation, you might want to invalidate cache or trigger re-analysis
+  }
+
+  // Production: Secure backend API
+  private async callSecureBackend(data: any, backendUrl: string): Promise<ContentAnalysis> {
+    console.log('[Background] Using secure backend for analysis');
+    
+    const response = await fetch(`${backendUrl}/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: data.mainContent,
+        url: data.url,
+        platform: data.metadata.platform
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Backend error: ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
+  // Development: Direct OpenAI API
+  private async callOpenAIDirect(data: any, apiKey: string): Promise<ContentAnalysis> {
+    console.log('[Background] Using OpenAI API directly (development mode)');
+    
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'system', 
+            content: 'Analyze web content and return JSON with: summary, sentiment (positive/negative/neutral), keyInsights array, confidence (0-1), actionableItems array, categories array'
+          },
+          {
+            role: 'user',
+            content: `Analyze this content:\nTitle: ${data.title}\nURL: ${data.url}\nContent: ${data.mainContent.substring(0, 1000)}`
+          }
+        ],
+        max_tokens: 500,
+        temperature: 0.3
+      })
+    });
+
+    const result = await response.json();
+    return this.parseAIResponse(result.choices[0].message.content);
+  }
+
+  // Development: Direct Anthropic API  
+  private async callAnthropicDirect(data: any, apiKey: string): Promise<ContentAnalysis> {
+    console.log('[Background] Using Anthropic API directly (development mode)');
+    
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-3-haiku-20240307',
+        max_tokens: 500,
+        messages: [
+          {
+            role: 'user',
+            content: `Analyze this web content and return JSON with summary, sentiment, keyInsights, confidence, actionableItems, categories:\n\n${data.mainContent.substring(0, 1000)}`
+          }
+        ]
+      })
+    });
+
+    const result = await response.json();
+    return this.parseAIResponse(result.content[0].text);
+  }
+
+  // Parse AI response into ContentAnalysis format
+  private parseAIResponse(response: string): ContentAnalysis {
+    try {
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return {
+          summary: parsed.summary || 'Analysis completed',
+          sentiment: parsed.sentiment || 'neutral',
+          keyInsights: Array.isArray(parsed.keyInsights) ? parsed.keyInsights : ['Analysis performed'],
+          confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
+          actionableItems: Array.isArray(parsed.actionableItems) ? parsed.actionableItems : ['Review results'],
+          categories: Array.isArray(parsed.categories) ? parsed.categories : ['General']
+        };
+      }
+    } catch (error) {
+      console.error('[Background] Failed to parse AI response:', error);
+    }
+
+    // Fallback
+    return {
+      summary: 'AI analysis completed but response format was unexpected',
+      sentiment: 'neutral',
+      keyInsights: ['Content analysis performed'],
+      confidence: 0.3,
+      actionableItems: ['Review AI service configuration'],
+      categories: ['General Content']
+    };
   }
 }
 
