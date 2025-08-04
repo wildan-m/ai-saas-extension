@@ -6,11 +6,8 @@
   "author": "Wildan Muhlis",
   "scripts": {
     "dev": "node scripts/simple-dev.js",
-    "dev:watch": "node scripts/dev-with-injection.js",
-    "dev:manual": "plasmo dev",
     "build": "plasmo build && node scripts/inject-env.js",
-    "package": "plasmo package",
-    "inject-env": "node scripts/inject-env.js"
+    "package": "plasmo package"
   },
   "dependencies": {
     "@plasmohq/storage": "^1.15.0",
