@@ -24,9 +24,14 @@
    - Copy the key (starts with `sk-`)
    - Paste it in your `.env` file
 
-4. **Start development:**
+4. **Start development with automatic API key injection:**
    ```bash
-   npm run dev
+   npm run dev    # Automatically injects API keys every 30 seconds!
+   ```
+
+5. **Or build for production:**
+   ```bash
+   npm run build  # One-time build with API key injection
    ```
 
 ### **For Production (When Publishing):**
@@ -91,3 +96,19 @@ Your extension is currently configured for:
 - ✅ **Ready to add** real AI when you get API keys
 
 To use real AI, just add your OpenAI key to `.env` and restart the dev server!
+
+## 🚀 **NEW: Automatic API Key Injection**
+
+Starting development is now just **one command**:
+```bash
+npm run dev
+```
+
+**What happens:**
+1. Starts Plasmo development server
+2. Waits 6 seconds for initial build
+3. Automatically injects your API keys
+4. Re-injects every 30 seconds to catch changes
+5. Extension shows **🚀 Real OpenAI analysis** automatically!
+
+**No more manual injection steps needed!** 🎉

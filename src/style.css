@@ -1,0 +1,42 @@
+/* Global styles for popup */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Override Chrome extension popup constraints */
+html, body {
+  min-width: 800px !important;
+  width: 800px !important;
+  max-width: none !important;
+}
+
+/* Ensure popup container can be wide */
+.popup-container {
+  min-width: 800px !important;
+  width: 800px !important;
+  max-width: none !important;
+}
+
+/* Custom utilities for enhanced styling */
+@layer utilities {
+  .transform-gpu {
+    transform: translateZ(0);
+  }
+  
+  .shadow-colored {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 900px) {
+  html, body {
+    min-width: 750px !important;
+    width: 750px !important;
+  }
+  
+  .popup-container {
+    min-width: 750px !important;
+    width: 750px !important;
+  }
+}

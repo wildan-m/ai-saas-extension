@@ -70,3 +70,4 @@ jspm_packages/
 .env.local
 .env.development
 .env.production
+result.png

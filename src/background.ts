@@ -1,5 +1,6 @@
 import type { ContentAnalysis, RateLimitEntry, ChromeMessage } from "~/types"
-import { MessageHandler } from "~/lib/messaging"
+import { ExtensionUtils } from "~/lib/extension-utils"
+import config, { getApiMode, hasValidOpenAIKey, hasValidAnthropicKey } from "~/lib/config"
 
 class AIService {
   private rateLimiter = new Map<string, RateLimitEntry>();
@@ -16,11 +17,21 @@ class AIService {
   private initializeExtension(): void {
     // Plasmo-specific initialization
     console.log('[Background] AI Service initialized');
+    
+    // Setup extension lifecycle handlers
+    ExtensionUtils.setupLifecycleHandlers();
   }
 
   setupMessageHandlers(): void {
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       console.log('[Background] Received message:', message);
+      
+      // Check if extension context is still valid
+      if (!ExtensionUtils.isContextValid()) {
+        console.error('[Background] Extension context invalidated');
+        sendResponse({ success: false, error: 'Extension context invalidated. Please reload the extension.' });
+        return false;
+      }
       
       if (message.type === 'ANALYZE_CONTENT') {
         this.handleContentAnalysis(message.data)
@@ -30,7 +41,10 @@ class AIService {
           })
           .catch(error => {
             console.error('[Background] Analysis failed:', error);
-            sendResponse({ success: false, error: error.message });
+            sendResponse({ 
+              success: false, 
+              error: error.message || 'Analysis failed. Please try again.' 
+            });
           });
         return true; // Keep message channel open for async response
       }
@@ -117,29 +131,36 @@ class AIService {
   }
 
   private async simulateAIAnalysis(data: any): Promise<ContentAnalysis> {
-    const isDevelopment = process.env.NODE_ENV === 'development';
-    const openaiKey = process.env.OPENAI_API_KEY;
-    const anthropicKey = process.env.ANTHROPIC_API_KEY;
-    const backendUrl = process.env.PLASMO_PUBLIC_BACKEND_URL;
-
-    // Production Mode: Use secure backend
-    if (!isDevelopment && backendUrl) {
-      return this.callSecureBackend(data, backendUrl);
-    }
-
-    // Development Mode: Direct API calls (for testing)
-    if (isDevelopment && openaiKey && openaiKey !== 'sk-your-openai-api-key-here') {
-      return this.callOpenAIDirect(data, openaiKey);
-    }
-
-    if (isDevelopment && anthropicKey && anthropicKey !== 'your-anthropic-api-key-here') {
-      return this.callAnthropicDirect(data, anthropicKey);
-    }
-
-    // Fallback: Simulated analysis
-    console.log('[Background] Using simulated AI analysis');
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    const apiMode = getApiMode();
     
+    console.log('[Background] API Mode:', apiMode);
+    console.log('[Background] Config check:', {
+      isDevelopment: config.isDevelopment,
+      hasBackendUrl: !!config.backendUrl,
+      hasOpenAIKey: hasValidOpenAIKey(),
+      hasAnthropicKey: hasValidAnthropicKey(),
+      openaiKeyPreview: config.openaiApiKey ? `${config.openaiApiKey.substring(0, 10)}...` : 'none'
+    });
+
+    switch (apiMode) {
+      case 'backend':
+        return this.callSecureBackend(data, config.backendUrl!);
+        
+      case 'openai':
+        return this.callOpenAIDirect(data, config.openaiApiKey!);
+        
+      case 'anthropic':
+        return this.callAnthropicDirect(data, config.anthropicApiKey!);
+        
+      case 'simulation':
+      default:
+        console.log('[Background] Using simulated AI analysis - no API keys configured');
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        return this.performSimulatedAnalysis(data);
+    }
+  }
+
+  private performSimulatedAnalysis(data: any): ContentAnalysis {
     const content = data.mainContent.toLowerCase();
     const wordCount = content.split(/\s+/).length;
     
@@ -169,12 +190,18 @@ class AIService {
     const categories = this.categorizeContent(data);
     
     return {
-      summary: this.generateSummary(data, wordCount),
+      summary: `🤖 SIMULATED ANALYSIS: ${this.generateSummary(data, wordCount)}`,
       sentiment,
-      keyInsights,
+      keyInsights: [
+        '🤖 This is simulated analysis (keyword-based)',
+        ...keyInsights
+      ],
       confidence: Math.min(0.9, Math.max(0.3, (positiveCount + negativeCount) / 10)),
-      actionableItems,
-      categories
+      actionableItems: [
+        '🔑 Add real API key for AI-powered analysis',
+        ...actionableItems
+      ],
+      categories: ['🤖 Simulation', ...categories]
     };
   }
 
@@ -270,6 +297,7 @@ class AIService {
     // In a real implementation, you might want to invalidate cache or trigger re-analysis
   }
 
+
   // Production: Secure backend API
   private async callSecureBackend(data: any, backendUrl: string): Promise<ContentAnalysis> {
     console.log('[Background] Using secure backend for analysis');
@@ -288,7 +316,18 @@ class AIService {
       throw new Error(`Backend error: ${response.status}`);
     }
 
-    return await response.json();
+    const analysis = await response.json();
+    
+    // Add indicators that this is from secure backend
+    return {
+      ...analysis,
+      summary: `🔒 Backend Analysis: ${analysis.summary}`,
+      keyInsights: [
+        '🔒 Secure backend API analysis',
+        ...analysis.keyInsights
+      ],
+      categories: ['🔒 Production', ...analysis.categories]
+    };
   }
 
   // Development: Direct OpenAI API
@@ -319,7 +358,18 @@ class AIService {
     });
 
     const result = await response.json();
-    return this.parseAIResponse(result.choices[0].message.content);
+    const analysis = this.parseAIResponse(result.choices[0].message.content);
+    
+    // Add indicators that this is real AI analysis
+    return {
+      ...analysis,
+      summary: `🚀 OpenAI Analysis: ${analysis.summary}`,
+      keyInsights: [
+        '🚀 Real OpenAI GPT-3.5 analysis',
+        ...analysis.keyInsights
+      ],
+      categories: ['AI Powered', ...analysis.categories]
+    };
   }
 
   // Development: Direct Anthropic API  
@@ -346,7 +396,18 @@ class AIService {
     });
 
     const result = await response.json();
-    return this.parseAIResponse(result.content[0].text);
+    const analysis = this.parseAIResponse(result.content[0].text);
+    
+    // Add indicators that this is real AI analysis
+    return {
+      ...analysis,
+      summary: `🧠 Claude Analysis: ${analysis.summary}`,
+      keyInsights: [
+        '🧠 Real Anthropic Claude analysis',
+        ...analysis.keyInsights
+      ],
+      categories: ['AI Powered', ...analysis.categories]
+    };
   }
 
   // Parse AI response into ContentAnalysis format
